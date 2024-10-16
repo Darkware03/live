@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transmisión en Vivo</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        /* Evitar interacción con el video (deshabilitar clics y selección) */
+        video {
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Transmisión en Vivo</h1>
+    <video id="video" autoplay muted playsinline disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback" style="width: 100%; height: auto;"></video>
+
+    <script>
+        const video = document.getElementById('video');
+        const videoSrc = '/videos/stream.m3u8';
+
+        // Deshabilitar controles
+        video.controls = false;
+
+        // Deshabilitar Picture-in-Picture
+        video.disablePictureInPicture = true;
+
+        // Monitorear si el video intenta entrar en PiP y forzar la salida
+        video.addEventListener('enterpictureinpicture', (event) => {
+            document.exitPictureInPicture().catch(error => {
+                console.error('Error forzando salida de PiP:', error);
+            });
+        });
+
+        // Prevenir eventos de clic en el video para bloquear cualquier interacción
+        video.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+
+        // Evitar que los usuarios puedan hacer clic derecho y descargar el video
+        video.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        // Evitar que el video se pause o que se pueda controlar de alguna manera
+        video.addEventListener('play', function() {
+            video.play();
+        });
+
+        video.addEventListener('pause', function() {
+            video.play(); // Si el usuario intenta pausar, se reproduce de nuevo.
+        });
+
+        // Manejo de sincronización con HLS.js
+        function syncPlayback(currentTime) {
+            if (Hls.isSupported()) {
+                const hls = new Hls({
+                    maxBufferLength: 30,
+                    liveSyncDuration: 10,
+                    enableWorker: true,
+                    debug: false
+                });
+                hls.loadSource(videoSrc);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.currentTime = currentTime; // Sincronizar tiempo
+                    video.play();
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Para Safari
+                video.src = videoSrc;
+                video.currentTime = currentTime;
+                video.addEventListener('loadedmetadata', () => {
+                    video.play();
+                });
+            }
+        }
+
+        // Obtener el tiempo actual desde el servidor
+        fetch('/currentTime')
+            .then(response => response.json())
+            .then(data => {
+                const currentTime = data.currentTime;
+                syncPlayback(currentTime); // Sincronizar la reproducción con el tiempo actual
+            })
+            .catch(error => {
+                console.error('Error obteniendo el tiempo de reproducción:', error);
+            });
+
+        // Evitar pantalla completa, detección de eventos
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen(); // Forzar salir de pantalla completa
+            }
+        });
+
+        // Asegurar la velocidad de reproducción normal
+        video.playbackRate = 1.0;
+    </script>
+</body>
+</html>
